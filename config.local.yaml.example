@@ -1,0 +1,8 @@
+# Copy this to config.local.yaml (gitignored) and fill in real values.
+# Anything here is deep-merged on top of config.yaml at load time, so you
+# only need to list the keys you're overriding.
+
+notify:
+  ntfy:
+    server: http://YOUR-NETBIRD-IP:28419
+    topic: catcam-CHANGE-ME

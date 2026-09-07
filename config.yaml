@@ -1,0 +1,70 @@
+# cat-cam configuration
+
+camera:
+  # v4l2 device the DroidCam virtual camera shows up as.
+  # Check with: v4l2-ctl --list-devices
+  device: /dev/video1
+  # Optional (x, y, w, h) pixel crop applied before detection, e.g. to cut
+  # away black letterbox bars from a portrait phone stream. Leave null to
+  # use the full frame.
+  crop:
+
+detection:
+  model: yolov8n.pt
+  # COCO class name we care about.
+  class_name: cat
+  # Confidence threshold used in normal (daytime/bright) conditions.
+  confidence_day: 0.32
+  # Lower threshold used automatically once the scene is judged "dark".
+  # Lower = more sensitive, but more prone to false positives.
+  confidence_night: 0.18
+  # Mean pixel brightness (0-255) below which we switch to night mode:
+  # apply CLAHE contrast enhancement and use confidence_night.
+  night_brightness_threshold: 60.0
+  # Run detection this often, not on every frame.
+  interval_seconds: 1.0
+  # Require this many consecutive detecting frames before alerting, to
+  # cut down on one-off false positives.
+  consecutive_frames_required: 2
+  # If no detection for this long, consider the cat "gone" and re-arm so
+  # the next appearance (same cat coming back, or a different cat) sends
+  # a fresh notification. Keep this short -- there's no other cooldown,
+  # so a new arrival notifies as soon as it's re-armed.
+  absence_reset_seconds: 30.0
+  # Normalized (x, y, w, h) in 0..1 of the frame -- detection only runs
+  # inside this rectangle. null means the full frame. Set this from the
+  # web UI's zone editor rather than editing it by hand.
+  zone:
+  - 0.3765625
+  - 0.006401909722222222
+  - 0.30234375
+  - 0.9486111111111111
+web:
+  enabled: true
+  # Bound to localhost only, on purpose: the live feed has no login, so it
+  # must never be reachable from anywhere but this machine.
+  host: 127.0.0.1
+  port: 8090
+
+notify:
+  desktop: true
+  ntfy:
+    enabled: true
+    # Self-hosted ntfy (docker container "cat-cam-ntfy"), bound only to
+    # this machine's Netbird VPN interface -- unreachable from outside
+    # the VPN, so no third party ever sees the footage. Data persists in
+    # ntfy-server/cache/. Docker's restart policy + docker.service being
+    # enabled at boot mean it survives reboots without a systemd unit.
+    #
+    # server/topic are secrets (the topic name is an unauthenticated
+    # bearer token for this channel) -- set in config.local.yaml
+    # (gitignored, see config.local.yaml.example), not here.
+
+snapshot:
+  enabled: true
+  dir: snapshots
+  # Delete snapshots older than this many days.
+  retention_days: 14
+
+logging:
+  level: INFO

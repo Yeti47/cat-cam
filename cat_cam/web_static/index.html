@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>cat-cam</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #14161a;
+    --panel: #1d2026;
+    --border: #2c3038;
+    --text: #e7e9ee;
+    --muted: #9aa1ac;
+    --accent: #4da3ff;
+    --flash: #ffe14d;
+    --warn: #ffb347;
+    --error: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.4 system-ui, sans-serif;
+  }
+  header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  header h1 { font-size: 16px; margin: 0; }
+  header span { color: var(--muted); font-size: 12px; }
+  main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 16px;
+    padding: 16px;
+    align-items: start;
+  }
+  @media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+  }
+  .video-wrap {
+    position: relative;
+    display: inline-block;
+    border: 6px solid var(--border);
+    border-radius: 6px;
+    line-height: 0;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+    max-width: 100%;
+  }
+  .video-wrap.flash {
+    animation: pulse 900ms ease-in-out 2;
+  }
+  @keyframes pulse {
+    0%, 100% { border-color: var(--border); box-shadow: none; }
+    50% { border-color: var(--flash); box-shadow: 0 0 24px 4px var(--flash); }
+  }
+  #stream { display: block; max-width: 100%; height: auto; user-select: none; }
+  #zoneLayer {
+    position: absolute;
+    inset: 0;
+    cursor: crosshair;
+  }
+  #zoneLayer.hidden-zone {
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .zone-rect {
+    position: absolute;
+    border: 2px dashed var(--accent);
+    background: rgba(77, 163, 255, 0.12);
+  }
+  .handle {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    margin: -6px;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+  .handle.nw { top: 0; left: 0; cursor: nwse-resize; }
+  .handle.ne { top: 0; left: 100%; cursor: nesw-resize; }
+  .handle.sw { top: 100%; left: 0; cursor: nesw-resize; }
+  .handle.se { top: 100%; left: 100%; cursor: nwse-resize; }
+  .zone-body { position: absolute; inset: 0; cursor: move; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 16px;
+  }
+  .panel h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--muted);
+    margin: 0 0 10px;
+  }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .row label { flex: 1; }
+  .row input[type=number] {
+    width: 90px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 4px;
+    padding: 4px 6px;
+  }
+  .row input[type=range] { flex: 1; }
+  .row .val { width: 44px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  button {
+    background: var(--accent);
+    border: none;
+    color: #0a1420;
+    font-weight: 600;
+    padding: 7px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  button.secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-weight: 400;
+  }
+  .btn-row { display: flex; gap: 8px; margin-top: 8px; }
+  #saveStatus { color: var(--muted); font-size: 12px; margin-left: 8px; }
+
+  #logs {
+    grid-column: 1 / -1;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  #logs summary {
+    padding: 10px 14px;
+    cursor: pointer;
+    color: var(--muted);
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: .04em;
+  }
+  #logLines {
+    height: 260px;
+    overflow-y: auto;
+    padding: 0 14px 14px;
+    font: 12px/1.5 ui-monospace, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .log-line.WARNING { color: var(--warn); }
+  .log-line.ERROR, .log-line.CRITICAL { color: var(--error); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>cat-cam</h1>
+  <span>live feed &amp; tuning</span>
+</header>
+
+<main>
+  <div>
+    <div class="video-wrap" id="videoWrap">
+      <img id="stream" src="/stream.mjpg" alt="live feed">
+      <div id="zoneLayer"></div>
+    </div>
+    <div class="btn-row">
+      <button id="saveZone">Save zone</button>
+      <button class="secondary" id="clearZone">Clear zone</button>
+      <label style="display:flex; align-items:center; gap:4px; color: var(--muted); font-size: 12px;">
+        <input type="checkbox" id="showZone" checked> Show zone
+      </label>
+      <span id="zoneStatus" style="color: var(--muted); font-size: 12px; align-self: center;"></span>
+    </div>
+  </div>
+
+  <div>
+    <div class="panel">
+      <h2>Detection</h2>
+      <div class="row">
+        <label for="confidence_day">Confidence (day)</label>
+        <input type="range" id="confidence_day" min="0" max="1" step="0.01">
+        <span class="val" id="confidence_day_val"></span>
+      </div>
+      <div class="row">
+        <label for="confidence_night">Confidence (night)</label>
+        <input type="range" id="confidence_night" min="0" max="1" step="0.01">
+        <span class="val" id="confidence_night_val"></span>
+      </div>
+      <div class="row">
+        <label for="night_brightness_threshold">Night brightness threshold</label>
+        <input type="number" id="night_brightness_threshold" min="0" max="255" step="1">
+      </div>
+      <div class="row">
+        <label for="consecutive_frames_required">Consecutive frames required</label>
+        <input type="number" id="consecutive_frames_required" min="1" step="1">
+      </div>
+      <div class="row">
+        <label for="absence_reset_seconds">Absence reset (s)</label>
+        <input type="number" id="absence_reset_seconds" min="0" step="1">
+      </div>
+      <div class="btn-row">
+        <button id="saveConfig">Save</button>
+        <span id="saveStatus"></span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Notifications</h2>
+      <div class="row">
+        <label for="notify_desktop">Desktop</label>
+        <input type="checkbox" id="notify_desktop">
+      </div>
+      <div class="row">
+        <label for="notify_ntfy_enabled">ntfy push</label>
+        <input type="checkbox" id="notify_ntfy_enabled">
+      </div>
+      <div class="row">
+        <label for="soundEnabled">Browser sound</label>
+        <input type="checkbox" id="soundEnabled" checked>
+      </div>
+    </div>
+  </div>
+
+  <details id="logs" open>
+    <summary>Logs</summary>
+    <div id="logLines"></div>
+  </details>
+</main>
+
+<script>
+(function () {
+  // ---------- config form ----------
+  const fields = ["confidence_day", "confidence_night", "night_brightness_threshold",
+                   "consecutive_frames_required", "absence_reset_seconds"];
+  const rangeFields = new Set(["confidence_day", "confidence_night"]);
+
+  function applyConfig(cfg) {
+    fields.forEach((f) => {
+      const el = document.getElementById(f);
+      el.value = cfg[f];
+      if (rangeFields.has(f)) document.getElementById(f + "_val").textContent = Number(cfg[f]).toFixed(2);
+    });
+    document.getElementById("notify_desktop").checked = !!cfg.notify_desktop;
+    document.getElementById("notify_ntfy_enabled").checked = !!cfg.notify_ntfy_enabled;
+  }
+
+  rangeFields.forEach((f) => {
+    document.getElementById(f).addEventListener("input", (e) => {
+      document.getElementById(f + "_val").textContent = Number(e.target.value).toFixed(2);
+    });
+  });
+
+  fetch("/api/config").then((r) => r.json()).then(applyConfig);
+
+  document.getElementById("saveConfig").addEventListener("click", () => {
+    const payload = {
+      confidence_day: Number(document.getElementById("confidence_day").value),
+      confidence_night: Number(document.getElementById("confidence_night").value),
+      night_brightness_threshold: Number(document.getElementById("night_brightness_threshold").value),
+      consecutive_frames_required: parseInt(document.getElementById("consecutive_frames_required").value, 10),
+      absence_reset_seconds: Number(document.getElementById("absence_reset_seconds").value),
+      notify_desktop: document.getElementById("notify_desktop").checked,
+      notify_ntfy_enabled: document.getElementById("notify_ntfy_enabled").checked,
+    };
+    const status = document.getElementById("saveStatus");
+    status.textContent = "saving...";
+    fetch("/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+      .then((r) => r.json())
+      .then((cfg) => { applyConfig(cfg); status.textContent = "saved"; setTimeout(() => status.textContent = "", 1500); })
+      .catch(() => { status.textContent = "failed"; });
+  });
+
+  // ---------- zone editor ----------
+  const img = document.getElementById("stream");
+  const layer = document.getElementById("zoneLayer");
+  const zoneStatus = document.getElementById("zoneStatus");
+  let rect = null; // {x, y, w, h} in displayed-image pixels
+  let dragMode = null; // 'draw' | 'move' | 'nw' | 'ne' | 'sw' | 'se'
+  let dragStart = null;
+  let rectAtDragStart = null;
+
+  const showZoneBox = document.getElementById("showZone");
+  try {
+    const stored = localStorage.getItem("catcam.showZone");
+    if (stored !== null) showZoneBox.checked = stored === "true";
+  } catch (e) { /* localStorage unavailable, keep default */ }
+  function applyZoneVisibility() {
+    layer.classList.toggle("hidden-zone", !showZoneBox.checked);
+  }
+  showZoneBox.addEventListener("change", () => {
+    applyZoneVisibility();
+    try { localStorage.setItem("catcam.showZone", showZoneBox.checked); } catch (e) { /* ignore */ }
+  });
+  applyZoneVisibility();
+
+  function render() {
+    layer.querySelectorAll(".zone-rect").forEach((el) => el.remove());
+    if (!rect) return;
+    const el = document.createElement("div");
+    el.className = "zone-rect";
+    el.style.left = rect.x + "px";
+    el.style.top = rect.y + "px";
+    el.style.width = rect.w + "px";
+    el.style.height = rect.h + "px";
+    const body = document.createElement("div");
+    body.className = "zone-body";
+    body.addEventListener("mousedown", (e) => startDrag(e, "move"));
+    el.appendChild(body);
+    ["nw", "ne", "sw", "se"].forEach((corner) => {
+      const h = document.createElement("div");
+      h.className = "handle " + corner;
+      h.addEventListener("mousedown", (e) => startDrag(e, corner));
+      el.appendChild(h);
+    });
+    layer.appendChild(el);
+  }
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  function startDrag(e, mode) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragMode = mode;
+    dragStart = { x: e.clientX, y: e.clientY };
+    rectAtDragStart = rect ? { ...rect } : null;
+  }
+
+  layer.addEventListener("mousedown", (e) => {
+    const bounds = layer.getBoundingClientRect();
+    const x = clamp(e.clientX - bounds.left, 0, bounds.width);
+    const y = clamp(e.clientY - bounds.top, 0, bounds.height);
+    rect = { x, y, w: 0, h: 0 };
+    dragMode = "draw";
+    dragStart = { x: e.clientX, y: e.clientY };
+    render();
+  });
+
+  window.addEventListener("mousemove", (e) => {
+    if (!dragMode || !rect) return;
+    const bounds = layer.getBoundingClientRect();
+    const dx = e.clientX - dragStart.x;
+    const dy = e.clientY - dragStart.y;
+
+    if (dragMode === "draw") {
+      const x0 = clamp(dragStart.x - bounds.left, 0, bounds.width);
+      const y0 = clamp(dragStart.y - bounds.top, 0, bounds.height);
+      const x1 = clamp(e.clientX - bounds.left, 0, bounds.width);
+      const y1 = clamp(e.clientY - bounds.top, 0, bounds.height);
+      rect = { x: Math.min(x0, x1), y: Math.min(y0, y1), w: Math.abs(x1 - x0), h: Math.abs(y1 - y0) };
+    } else if (dragMode === "move") {
+      const s = rectAtDragStart;
+      rect = {
+        x: clamp(s.x + dx, 0, bounds.width - s.w),
+        y: clamp(s.y + dy, 0, bounds.height - s.h),
+        w: s.w, h: s.h,
+      };
+    } else {
+      const s = rectAtDragStart;
+      let { x, y, w, h } = s;
+      if (dragMode.includes("n")) { y = s.y + dy; h = s.h - dy; }
+      if (dragMode.includes("s")) { h = s.h + dy; }
+      if (dragMode.includes("w")) { x = s.x + dx; w = s.w - dx; }
+      if (dragMode.includes("e")) { w = s.w + dx; }
+      if (w < 0) { x += w; w = -w; }
+      if (h < 0) { y += h; h = -h; }
+      rect = { x: clamp(x, 0, bounds.width), y: clamp(y, 0, bounds.height), w, h };
+    }
+    render();
+  });
+
+  window.addEventListener("mouseup", () => { dragMode = null; });
+
+  function fetchZone() {
+    fetch("/api/zone").then((r) => r.json()).then(({ zone }) => {
+      if (!zone) { rect = null; render(); return; }
+      const bounds = layer.getBoundingClientRect();
+      rect = {
+        x: zone.x * bounds.width, y: zone.y * bounds.height,
+        w: zone.w * bounds.width, h: zone.h * bounds.height,
+      };
+      render();
+    });
+  }
+  img.addEventListener("load", fetchZone, { once: true });
+  // MJPEG <img> only fires 'load' once for the whole stream in most browsers;
+  // fall back to a short delay in case it already loaded from cache.
+  setTimeout(fetchZone, 500);
+
+  document.getElementById("saveZone").addEventListener("click", () => {
+    if (!rect || rect.w < 4 || rect.h < 4) { zoneStatus.textContent = "draw a rectangle first"; return; }
+    const bounds = layer.getBoundingClientRect();
+    const payload = {
+      x: rect.x / bounds.width, y: rect.y / bounds.height,
+      w: rect.w / bounds.width, h: rect.h / bounds.height,
+    };
+    fetch("/api/zone", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(() => { zoneStatus.textContent = "zone saved"; setTimeout(() => zoneStatus.textContent = "", 1500); });
+  });
+
+  document.getElementById("clearZone").addEventListener("click", () => {
+    rect = null;
+    render();
+    fetch("/api/zone", { method: "POST", headers: { "Content-Type": "application/json" }, body: "null" })
+      .then(() => { zoneStatus.textContent = "zone cleared"; setTimeout(() => zoneStatus.textContent = "", 1500); });
+  });
+
+  // ---------- detection flash + sound ----------
+  const videoWrap = document.getElementById("videoWrap");
+  let audioCtx = null;
+
+  function beep() {
+    if (!document.getElementById("soundEnabled").checked) return;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.3, audioCtx.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.35);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.4);
+    } catch (e) { /* audio unavailable, ignore */ }
+  }
+
+  function connectEvents() {
+    const es = new EventSource("/events");
+    es.onmessage = () => {
+      videoWrap.classList.remove("flash");
+      void videoWrap.offsetWidth; // restart animation
+      videoWrap.classList.add("flash");
+      beep();
+    };
+    es.onerror = () => { es.close(); setTimeout(connectEvents, 3000); };
+  }
+  connectEvents();
+
+  // ---------- logs ----------
+  const logLines = document.getElementById("logLines");
+  function appendLog(line) {
+    const div = document.createElement("div");
+    const match = line.match(/\s(DEBUG|INFO|WARNING|ERROR|CRITICAL)\s/);
+    div.className = "log-line" + (match ? " " + match[1] : "");
+    div.textContent = line;
+    logLines.appendChild(div);
+    while (logLines.childElementCount > 1000) logLines.removeChild(logLines.firstChild);
+    logLines.scrollTop = logLines.scrollHeight;
+  }
+
+  fetch("/api/logs").then((r) => r.json()).then(({ lines }) => lines.forEach(appendLog));
+
+  function connectLogs() {
+    const es = new EventSource("/logs/stream");
+    es.onmessage = (e) => appendLog(JSON.parse(e.data));
+    es.onerror = () => { es.close(); setTimeout(connectLogs, 3000); };
+  }
+  connectLogs();
+})();
+</script>
+</body>
+</html>

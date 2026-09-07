@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+*.pt
+snapshots/*.jpg
+!snapshots/.gitkeep
+ntfy-server/cache/
+cat_cam.egg-info/
+config.local.yaml

@@ -1,0 +1,23 @@
+[project]
+name = "cat-cam"
+version = "0.1.0"
+description = "Detect a cat waiting at the glass door via DroidCam and send a notification"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "opencv-python>=4.9",
+    "ultralytics>=8.3",
+    "ruamel.yaml>=0.18",
+    "requests>=2.31",
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+]
+
+[project.scripts]
+cat-cam = "cat_cam.main:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["cat_cam"]

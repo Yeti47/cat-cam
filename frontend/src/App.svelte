@@ -71,6 +71,8 @@
     gap: 20px;
     padding: 10px 16px;
     border-bottom: 1px solid var(--border);
+    /* Don't let a short window squeeze the nav to make room for the feed. */
+    flex-shrink: 0;
   }
 
   h1 {

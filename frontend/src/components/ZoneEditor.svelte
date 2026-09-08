@@ -1,9 +1,15 @@
 <script lang="ts">
   // Draggable / resizable rectangle overlaid on the live feed.
   //
-  // Works in normalized 0..1 coordinates so the saved zone is independent
-  // of the displayed image size, and converts to/from pixels only for
-  // rendering and mouse math.
+  // Everything is kept in normalized 0..1 coordinates -- the same space
+  // the backend stores -- and rendered as percentages. Nothing measures
+  // the element to draw, which matters because the MJPEG image has no
+  // size until its first frame arrives: a pixel-based render computed at
+  // mount would come out zero-sized and never correct itself (the zone
+  // would look "reset" after every page reload). Percentages are also
+  // automatically right after a window resize.
+  //
+  // Pixels appear only while dragging, where layout is necessarily settled.
 
   type Rect = { x: number; y: number; w: number; h: number };
   type Handle = "nw" | "ne" | "sw" | "se";
@@ -17,34 +23,44 @@
 
   let { zone, visible = true, onchange }: Props = $props();
 
+  // Ignore drags that are really just a click: 4px, as a fraction.
+  const MIN_SIZE_PX = 4;
+
   let layer: HTMLDivElement;
   let dragMode: DragMode | null = null;
   let dragStart = { x: 0, y: 0 };
   let rectAtDragStart: Rect | null = null;
-  // Pixel rect during a drag; null means "show the saved zone".
+  // In-progress rectangle; null means "show whatever is saved".
   let draft = $state<Rect | null>(null);
 
-  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+  const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+
+  let display = $derived.by((): Rect | null => {
+    if (draft) return draft;
+    if (!zone) return null;
+    return { x: zone[0], y: zone[1], w: zone[2], h: zone[3] };
+  });
 
   function bounds() {
     return layer.getBoundingClientRect();
   }
 
-  // What to render: the in-progress draft, else the saved zone scaled up.
-  let display = $derived.by((): Rect | null => {
-    if (draft) return draft;
-    if (!zone || !layer) return null;
-    const b = layer.getBoundingClientRect();
-    return { x: zone[0] * b.width, y: zone[1] * b.height, w: zone[2] * b.width, h: zone[3] * b.height };
-  });
+  /** Client coordinates -> normalized position within the layer. */
+  function toNormalized(clientX: number, clientY: number) {
+    const b = bounds();
+    return {
+      x: clamp01((clientX - b.left) / b.width),
+      y: clamp01((clientY - b.top) / b.height),
+    };
+  }
 
   function commit(rect: Rect | null) {
-    if (!rect || rect.w < 4 || rect.h < 4) {
+    const b = bounds();
+    if (!rect || rect.w * b.width < MIN_SIZE_PX || rect.h * b.height < MIN_SIZE_PX) {
       draft = null;
       return;
     }
-    const b = bounds();
-    onchange([rect.x / b.width, rect.y / b.height, rect.w / b.width, rect.h / b.height]);
+    onchange([rect.x, rect.y, rect.w, rect.h]);
     draft = null;
   }
 
@@ -58,26 +74,29 @@
   }
 
   function onLayerMouseDown(event: MouseEvent) {
-    const b = bounds();
-    const x = clamp(event.clientX - b.left, 0, b.width);
-    const y = clamp(event.clientY - b.top, 0, b.height);
+    const start = toNormalized(event.clientX, event.clientY);
     dragMode = "draw";
     dragStart = { x: event.clientX, y: event.clientY };
-    draft = { x, y, w: 0, h: 0 };
+    draft = { x: start.x, y: start.y, w: 0, h: 0 };
   }
 
   function onMouseMove(event: MouseEvent) {
     if (!dragMode) return;
     const b = bounds();
-    const dx = event.clientX - dragStart.x;
-    const dy = event.clientY - dragStart.y;
+    // Deltas as fractions of the displayed size, so dragging tracks the
+    // cursor regardless of how the feed is scaled.
+    const dx = (event.clientX - dragStart.x) / b.width;
+    const dy = (event.clientY - dragStart.y) / b.height;
 
     if (dragMode === "draw") {
-      const x0 = clamp(dragStart.x - b.left, 0, b.width);
-      const y0 = clamp(dragStart.y - b.top, 0, b.height);
-      const x1 = clamp(event.clientX - b.left, 0, b.width);
-      const y1 = clamp(event.clientY - b.top, 0, b.height);
-      draft = { x: Math.min(x0, x1), y: Math.min(y0, y1), w: Math.abs(x1 - x0), h: Math.abs(y1 - y0) };
+      const from = toNormalized(dragStart.x, dragStart.y);
+      const to = toNormalized(event.clientX, event.clientY);
+      draft = {
+        x: Math.min(from.x, to.x),
+        y: Math.min(from.y, to.y),
+        w: Math.abs(to.x - from.x),
+        h: Math.abs(to.y - from.y),
+      };
       return;
     }
 
@@ -86,8 +105,8 @@
 
     if (dragMode === "move") {
       draft = {
-        x: clamp(s.x + dx, 0, b.width - s.w),
-        y: clamp(s.y + dy, 0, b.height - s.h),
+        x: Math.max(0, Math.min(s.x + dx, 1 - s.w)),
+        y: Math.max(0, Math.min(s.y + dy, 1 - s.h)),
         w: s.w,
         h: s.h,
       };
@@ -105,6 +124,7 @@
       w = s.w - dx;
     }
     if (dragMode.includes("e")) w = s.w + dx;
+    // Dragging a handle past the opposite edge flips the rectangle.
     if (w < 0) {
       x += w;
       w = -w;
@@ -113,7 +133,9 @@
       y += h;
       h = -h;
     }
-    draft = { x: clamp(x, 0, b.width), y: clamp(y, 0, b.height), w, h };
+    const nx = clamp01(x);
+    const ny = clamp01(y);
+    draft = { x: nx, y: ny, w: Math.min(w, 1 - nx), h: Math.min(h, 1 - ny) };
   }
 
   function onMouseUp() {
@@ -135,10 +157,10 @@
   {#if display}
     <div
       class="rect"
-      style:left="{display.x}px"
-      style:top="{display.y}px"
-      style:width="{display.w}px"
-      style:height="{display.h}px"
+      style:left="{display.x * 100}%"
+      style:top="{display.y * 100}%"
+      style:width="{display.w * 100}%"
+      style:height="{display.h * 100}%"
     >
       <div class="body" onmousedown={(e) => startDrag(e, "move")} role="presentation"></div>
       {#each ["nw", "ne", "sw", "se"] as const as handle (handle)}

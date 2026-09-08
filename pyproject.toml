@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Detect a cat waiting at the glass door via DroidCam and send a notification"
 requires-python = ">=3.10,<3.13"
 dependencies = [
-    "opencv-python>=4.9",
+    # headless: this app never opens a window, and the GUI build would drag
+    # libGL/libglib into the container image for nothing.
+    "opencv-python-headless>=4.9",
     "ultralytics>=8.3",
     "ruamel.yaml>=0.18",
     "requests>=2.31",

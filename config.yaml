@@ -35,8 +35,8 @@ detection:
   # inside this rectangle. null means the full frame. Set this from the
   # web UI's zone editor rather than editing it by hand.
   zone:
-  - 0.3765625
-  - 0.006401909722222222
+  - 0.40390625
+  - 0.0008463541666666667
   - 0.30234375
   - 0.9486111111111111
 web:
@@ -47,7 +47,10 @@ web:
   port: 8090
 
 notify:
-  desktop: true
+  # notify-send, for running bare-metal on a desktop session. Off by
+  # default because the container has no DBUS session to talk to -- the
+  # web UI's border flash + beep covers this instead.
+  desktop: false
   ntfy:
     enabled: true
     # Self-hosted ntfy (docker container "cat-cam-ntfy"), bound only to

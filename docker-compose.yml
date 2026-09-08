@@ -1,0 +1,48 @@
+services:
+  ntfy:
+    image: binwiederhier/ntfy
+    container_name: cat-cam-ntfy
+    command:
+      - serve
+      - --cache-file=/var/cache/ntfy/cache.db
+      - --behind-proxy=false
+      # Externally reachable URL on purpose: attachment links handed to the
+      # phone are built from this, so it must NOT be the internal hostname.
+      - --base-url=${NTFY_BASE_URL}
+      - --attachment-cache-dir=/var/cache/ntfy/attachments
+      - --attachment-total-size-limit=1G
+      - --attachment-file-size-limit=50M
+    volumes:
+      - ./ntfy-server/cache:/var/cache/ntfy
+    ports:
+      # Netbird VPN interface only -- not the LAN, not the public internet.
+      - "${NTFY_BIND_IP}:${NTFY_PORT}:80"
+    restart: unless-stopped
+
+  cat-cam:
+    build: .
+    container_name: cat-cam
+    depends_on:
+      - ntfy
+    devices:
+      - "${CAMERA_DEVICE}:${CAMERA_DEVICE}"
+    # /dev/video1 is root:video 0660, so the container user needs the
+    # host's video group as a supplementary group to read it.
+    group_add:
+      - "${VIDEO_GID}"
+    user: "1000:1000"
+    environment:
+      # Bind all interfaces *inside* the container; the published port
+      # below is what actually keeps the feed on localhost.
+      CATCAM_WEB_HOST: 0.0.0.0
+      # Reach ntfy over the compose network, so this container never needs
+      # to know the Netbird IP at all.
+      CATCAM_NTFY_SERVER: http://ntfy
+    ports:
+      - "127.0.0.1:8090:8090"
+    volumes:
+      # Read-write: the web UI writes live config changes back to this file.
+      - ./config.yaml:/app/config.yaml
+      - ./config.local.yaml:/app/config.local.yaml:ro
+      - ./snapshots:/app/snapshots
+    restart: unless-stopped

@@ -1,0 +1,20 @@
+# Keep the build context small -- .venv alone is ~1.4 GB.
+.venv/
+.git/
+.gitignore
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Model weights are downloaded during the build, not copied in.
+*.pt
+
+# Runtime data: bind-mounted at run time, never baked into the image.
+snapshots/
+ntfy-server/
+
+# Local secrets / environment -- mounted or injected at run time.
+config.local.yaml
+.env
+
+README.md

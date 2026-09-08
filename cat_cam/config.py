@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -8,6 +9,19 @@ from ruamel.yaml import YAML
 
 _yaml = YAML()
 _yaml.preserve_quotes = True
+
+# Env vars that override config values, mapped to their nested key path.
+# These exist for the Docker setup, where a couple of values necessarily
+# differ from the tracked config: the web server has to bind 0.0.0.0
+# inside the container (the published port is what keeps it on localhost),
+# and ntfy is reached by its compose service name rather than its
+# externally published address.
+_ENV_OVERRIDES = {
+    "CATCAM_WEB_HOST": ("web", "host"),
+    "CATCAM_WEB_PORT": ("web", "port"),
+    "CATCAM_NTFY_SERVER": ("notify", "ntfy", "server"),
+    "CATCAM_NTFY_TOPIC": ("notify", "ntfy", "topic"),
+}
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
@@ -20,6 +34,24 @@ def _deep_merge(base: dict, override: dict) -> dict:
             result[key] = _deep_merge(result[key], value)
         else:
             result[key] = value
+    return result
+
+
+def _apply_env_overrides(raw: dict) -> dict:
+    """Layer _ENV_OVERRIDES on top of `raw`, returning a new dict.
+    Highest precedence: env > config.local.yaml > config.yaml > defaults."""
+    result = raw
+    for env_name, path in _ENV_OVERRIDES.items():
+        value = os.environ.get(env_name)
+        if value is None:
+            continue
+        overlay: dict = {}
+        cursor = overlay
+        for key in path[:-1]:
+            cursor[key] = {}
+            cursor = cursor[key]
+        cursor[path[-1]] = value
+        result = _deep_merge(result, overlay)
     return result
 
 
@@ -99,6 +131,7 @@ class Config:
         if local_path.exists():
             local_raw = _yaml.load(local_path.read_text()) or {}
             effective = _deep_merge(raw, local_raw)
+        effective = _apply_env_overrides(effective)
 
         cam_raw = effective.get("camera", {})
         crop = cam_raw.get("crop")

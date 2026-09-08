@@ -231,6 +231,11 @@
         <label for="soundEnabled">Browser sound</label>
         <input type="checkbox" id="soundEnabled" checked>
       </div>
+      <div class="row" id="soundStatus" hidden>
+        <span style="color: var(--warn); font-size: 12px;">
+          Sound is blocked until you click the page once.
+        </span>
+      </div>
     </div>
   </div>
 
@@ -239,6 +244,10 @@
     <div id="logLines"></div>
   </details>
 </main>
+
+<!-- Outside <main> on purpose: it's a grid container, and an element in
+     there would take up a grid cell even with nothing to render. -->
+<audio id="alertSound" src="/static/detect.mp3" preload="auto"></audio>
 
 <script>
 (function () {
@@ -426,24 +435,35 @@
 
   // ---------- detection flash + sound ----------
   const videoWrap = document.getElementById("videoWrap");
-  let audioCtx = null;
+  const alertSound = document.getElementById("alertSound");
+  const soundStatus = document.getElementById("soundStatus");
 
   function beep() {
     if (!document.getElementById("soundEnabled").checked) return;
-    try {
-      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = 880;
-      gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.3, audioCtx.currentTime + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.35);
-      osc.connect(gain).connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.4);
-    } catch (e) { /* audio unavailable, ignore */ }
+    // Rewind first, so back-to-back detections retrigger from the start
+    // instead of being ignored while the previous play is still running.
+    alertSound.currentTime = 0;
+    const played = alertSound.play();
+    if (played) {
+      played.catch(() => {
+        // Browsers block audio until the page has been interacted with;
+        // primeAudio() below clears that on the first click/keypress.
+        soundStatus.hidden = false;
+      });
+    }
   }
+
+  // Unlock audio on the first user gesture. Without this, a tab opened and
+  // left alone on a second monitor stays silently blocked.
+  function primeAudio() {
+    alertSound.play().then(() => {
+      alertSound.pause();
+      alertSound.currentTime = 0;
+      soundStatus.hidden = true;
+    }).catch(() => { /* still blocked; the next gesture may unblock it */ });
+  }
+  window.addEventListener("click", primeAudio, { once: true });
+  window.addEventListener("keydown", primeAudio, { once: true });
 
   function connectEvents() {
     const es = new EventSource("/events");

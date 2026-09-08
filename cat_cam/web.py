@@ -7,14 +7,14 @@ from pathlib import Path
 from threading import Lock
 from typing import Optional
 
-_SSE_KEEPALIVE_SECONDS = 15
-
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 STATIC_DIR = Path(__file__).parent / "web_static"
 _STREAM_FPS = 10.0
+_SSE_KEEPALIVE_SECONDS = 15
 
 
 class ZonePayload(BaseModel):
@@ -39,6 +39,9 @@ def create_app(cat_cam_app, ring_handler) -> FastAPI:
     state = cat_cam_app.state
     config = cat_cam_app.config
     config_lock = Lock()
+
+    # Page assets (the detection alert sound, and anything added later).
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.get("/")
     def index():

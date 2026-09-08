@@ -6,4 +6,8 @@ snapshots/*.jpg
 !snapshots/.gitkeep
 ntfy-server/cache/
 cat_cam.egg-info/
+
+# Local secrets: app-level (ntfy topic) and compose-level (Netbird IP,
+# device paths). Templates are tracked as *.example instead.
 config.local.yaml
+.env

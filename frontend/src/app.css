@@ -1,0 +1,90 @@
+:root {
+  color-scheme: dark;
+  --bg: #14161a;
+  --panel: #1d2026;
+  --border: #2c3038;
+  --text: #e7e9ee;
+  --muted: #9aa1ac;
+  --accent: #4da3ff;
+  --flash: #ffe14d;
+  --warn: #ffb347;
+  --error: #ff6b6b;
+  --ok: #5ad18a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.4 system-ui, sans-serif;
+  /* Column layout so <main> can claim the leftover height, which is what
+     lets the live feed centre itself vertically without magic offsets. */
+  display: flex;
+  flex-direction: column;
+}
+
+button {
+  background: var(--accent);
+  border: none;
+  color: #0a1420;
+  font-weight: 600;
+  padding: 7px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.secondary {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-weight: 400;
+}
+
+button.danger {
+  background: transparent;
+  border: 1px solid var(--error);
+  color: var(--error);
+  font-weight: 400;
+}
+
+input[type="number"],
+input[type="text"] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.panel h2 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+
+.muted {
+  color: var(--muted);
+}

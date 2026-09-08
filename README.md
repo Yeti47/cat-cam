@@ -13,37 +13,68 @@ notification when a cat is detected outside, day or night.
   lit only by ambient light isn't missed.
 - Requires a few consecutive detecting frames before alerting (cuts down
   false positives), then stays quiet until the cat is gone from frame for
-  `absence_reset_seconds`, at which point it re-arms — so a new arrival
+  the absence-reset window, at which point it re-arms — so a new arrival
   (the same cat coming back, or a different cat) notifies right away.
 - Sends a push notification via a self-hosted [ntfy](https://ntfy.sh)
   server reachable only over your Netbird VPN, with a snapshot photo
-  (bounding box drawn) attached. (Desktop `notify-send` notifications are
-  also supported, but off by default — see `notify.desktop` below.)
-- Serves a local [Web UI](#web-ui) with the live feed, a detection-zone
-  editor, a browser flash/sound alert, live config tuning, and logs.
+  (bounding box drawn) attached.
+- Serves a [Web UI](#web-ui) with the live feed, a detection-zone editor,
+  a snapshot gallery, live config tuning, and logs.
+
+## Architecture
+
+```
+frontend/          Svelte 5 + Vite + TypeScript, built to static files
+cat_cam/
+  app.py           ASGI app: routers, lifespan-managed pipeline
+  settings.py      deploy config (env only)
+  store.py         runtime config (JSON in the data volume)
+  api/             config, stream, logs, snapshots routers
+  core/            camera, detector, pipeline, notifier, snapshots, state
+```
+
+The backend is a plain ASGI service — `uvicorn cat_cam.app:app` — with no
+CLI and no config file to edit. The capture/detect loop runs on a
+background thread started by the app lifespan, handing frames to the web
+layer through a shared state object.
+
+The frontend is built in a Docker stage and served as static files by the
+same FastAPI app, so there's one container, one origin, no CORS, and no
+proxy rules for the MJPEG stream or SSE endpoints.
+
+### Configuration: two tiers
+
+| Tier | Source | Changes at runtime? | What |
+| --- | --- | --- | --- |
+| Deploy | `.env` → `CATCAM_*` env vars | No, restart required | Camera device and crop, ntfy server/topic, model, data dir, log level |
+| Runtime | Web UI → `settings.json` in the data volume | Yes, applied live | Confidence thresholds, night brightness threshold, interval, consecutive frames, absence reset, detection zone, snapshot toggle/retention, notification mute |
+
+The split is *where to send / what hardware* versus *how to detect*.
+Nothing tunable lives in git, so adjusting a threshold or dragging the
+detection zone never produces a repo diff — and a `git pull` on another
+machine can't clobber locally tuned values.
+
+There is deliberately **no user-editable config file**. The app owns
+`settings.json` and rewrites it atomically.
 
 ## Setup
 
-Everything runs as a `docker compose` stack — cat-cam plus its own ntfy
-server. There's no systemd unit and no local virtualenv to maintain.
-
 ```bash
-cp .env.example .env                          # then fill in real values
-cp config.local.yaml.example config.local.yaml # then fill in the ntfy topic
+cp .env.example .env     # then fill in real values
 docker compose up -d --build
 ```
 
-`.env` holds infrastructure values compose interpolates (the Netbird IP the
-ntfy server publishes on, the camera device, the host's `video` group id).
-`config.local.yaml` holds app-level secrets — the ntfy topic. Both are
-gitignored; the `.example` files next to them show the structure.
+`.env` holds both the compose-level values (Netbird IP the ntfy server
+publishes on, camera device, the host's `video` group id) and the
+`CATCAM_*` application settings. It's gitignored; `.env.example` is the
+tracked template.
 
 The first build is slow and lands at roughly 2 GB: it installs CPU-only
 torch (no multi-GB CUDA wheels — inference here is plain CPU, which is
 plenty for one frame per second) and bakes the YOLOv8n weights into the
 image so startup needs no network.
 
-### Two things that look wrong but aren't
+### Three things that look wrong but aren't
 
 - **cat-cam publishes to `http://ntfy`, but ntfy's `--base-url` is the
   Netbird URL.** Both are deliberate. Publishing goes over the compose
@@ -51,80 +82,36 @@ image so startup needs no network.
   `--base-url` is what attachment links handed to your phone are built
   from, so it has to stay externally reachable. Don't "simplify" these to
   match.
-- **`web.host` is `127.0.0.1` in `config.yaml`, but the container sets
-  `CATCAM_WEB_HOST=0.0.0.0`.** Inside the container it must bind all
-  interfaces; the `127.0.0.1:8090:8090` port publish is what actually keeps
-  the feed off the network. The config keeps the safe default so a
-  bare-metal run doesn't accidentally expose the camera.
-
-## Configuration
-
-Values are layered, highest precedence first:
-
-| Layer | File | Tracked? | Holds |
-| --- | --- | --- | --- |
-| Env vars | compose `environment:` | yes | Only what must differ in Docker: `CATCAM_WEB_HOST`, `CATCAM_NTFY_SERVER` |
-| Local overrides | `config.local.yaml` | **no** | App secrets — the ntfy topic |
-| Base config | `config.yaml` | yes | Everything else |
-
-(`.env` is a fourth, separate thing: it's read by *compose itself*, not the
-app, for port bindings and device paths.)
-
-Most tuning is easier from the [Web UI](#web-ui) below, which writes back to
-`config.yaml` for you — preserving its comments, and never writing secrets
-from the layers above into it. Editing `config.yaml` by hand is still there
-for the settings the UI doesn't cover:
-
-- `camera.device` — check with `v4l2-ctl --list-devices` if DroidCam ever
-  enumerates under a different `/dev/videoN`. Also update `CAMERA_DEVICE`
-  in `.env`, since the device is passed into the container by path.
-- `detection.confidence_day` / `confidence_night` / `night_brightness_threshold`
-  / `consecutive_frames_required` / `absence_reset_seconds` — live-editable
-  from the Web UI. If cats are being missed at night, lower
-  `confidence_night` further or raise `night_brightness_threshold` so night
-  mode kicks in more readily.
-- `detection.zone` — set by dragging a rectangle in the Web UI rather than
-  by hand; see [Web UI](#web-ui). Limits detection to that region of the
-  frame, which also helps a nano-sized model's confidence when the cat is
-  otherwise a small object in a wide frame.
-- `camera.crop` — a static, always-applied pixel crop (unlike
-  `detection.zone`, this also affects the streamed video and snapshots).
-  Useful for cutting off black letterbox bars from a portrait phone stream
-  before anything else sees the frame. Grab a test frame with
-  `ffmpeg -f v4l2 -i /dev/video1 -frames:v 1 -update 1 test.jpg` and read
-  off `[x, y, w, h]` pixel coordinates.
-- `notify.desktop` — `notify-send` desktop notifications. Off by default:
-  there's no DBUS session inside the container, so this only does anything
-  for a bare-metal run. The Web UI's flash + beep replaces it.
-- `notify.ntfy.enabled` — live-editable from the Web UI.
-- `notify.ntfy.server` / `topic` — the self-hosted ntfy instance described
-  below. `topic` belongs in `config.local.yaml`; `server` is overridden to
-  the compose hostname inside the container.
+- **The app binds `0.0.0.0` inside the container.** The
+  `127.0.0.1:8090:8090` port publish is what actually keeps the feed off
+  the network.
+- **`pyproject.toml` pins `opencv-python-headless`, yet the Dockerfile
+  uninstalls `opencv-python` anyway.** `ultralytics` hard-depends on the
+  GUI build, which otherwise wins and crashes at import with
+  `ImportError: libxcb.so.1`.
 
 ## Web UI
 
-`cat-cam` serves a small local web page at **http://127.0.0.1:8090** (while
-the service is running) with:
+At **http://127.0.0.1:8090**, with four views:
 
-- A live view of the camera feed.
-- A **detection zone** editor: drag out a rectangle over the video (drag
-  its corners to resize, drag inside it to move), then "Save zone".
-  Detection only runs inside that rectangle from then on — useful both to
-  exclude irrelevant parts of the scene and to make a distant cat fill
-  more of the region the model actually looks at. "Clear zone" goes back
-  to scanning the full frame.
-- The video border flashes and a beep plays in the browser the instant a
-  cat is detected, on top of the ntfy push.
-- Live-editable detection settings (confidence thresholds, night
-  brightness threshold, consecutive-frames, absence reset) and the
-  notification toggles — changes apply immediately, no restart needed, and
-  are written back to `config.yaml` (comments and formatting preserved).
-- A live-tailing log panel, so you don't need `docker compose logs` just to
-  check what cat-cam is doing.
+- **Live** — the camera feed, plus the detection-zone editor. Drag on the
+  feed to draw a zone, drag its corners to resize or its middle to move;
+  it saves as you release. Detection then only runs inside that rectangle,
+  which both excludes irrelevant parts of the scene and makes a distant
+  cat fill more of the region the model actually looks at. "Hide zone"
+  gets the overlay out of the way; "Clear zone" goes back to the full
+  frame. The border flashes and a sound plays on every detection —
+  browsers block audio until you've clicked the page once.
+- **Snapshots** — gallery of saved detections, newest first, with
+  timestamp and the confidence that triggered them. Click to enlarge,
+  delete individually.
+- **Config** — the runtime settings above, applied immediately with no
+  restart, plus a read-only view of the deploy settings.
+- **Logs** — live tail with filtering, so you don't need
+  `docker compose logs` to see what cat-cam is doing.
 
 It's bound to `127.0.0.1` only, by design — there's no login, so it's only
-ever reachable from this machine (open it on a second monitor here). Set
-`web.enabled: false` in `config.yaml` to turn it off entirely.
+ever reachable from this machine.
 
 ## Notification server (self-hosted ntfy)
 
@@ -141,26 +128,25 @@ plain text alerts still go through. This bit us once: a real detection
 fired and logged "Notified", but the ntfy push never reached the phone
 because the attachment was rejected server-side.
 
-Message cache lives in `ntfy-server/cache/`, attachments in
-`ntfy-server/cache/attachments/`, both bind-mounted so they survive
-container rebuilds.
+Message cache lives in `ntfy-server/cache/`, bind-mounted so it survives
+rebuilds.
 
 If this machine's Netbird IP ever changes (check with `netbird status`),
 update `NTFY_BIND_IP` and `NTFY_BASE_URL` in `.env` and run
-`docker compose up -d` to recreate the containers. cat-cam itself needs no
-change — it reaches ntfy over the compose network.
+`docker compose up -d`. cat-cam itself needs no change — it reaches ntfy
+over the compose network.
 
 ### Subscribe to notifications
 
 1. Install the [ntfy app](https://ntfy.sh/app) (Android/iOS).
 2. Add a custom server: the `NTFY_BASE_URL` from your `.env`.
-3. Subscribe to the topic from your `config.local.yaml`.
+3. Subscribe to the `CATCAM_NTFY_TOPIC` from your `.env`.
 4. Make sure your phone is connected to the Netbird VPN.
 
 ## Running it
 
 ```bash
-docker compose up -d              # start (or apply config/compose changes)
+docker compose up -d              # start (or apply .env / compose changes)
 docker compose ps                 # status
 docker compose logs -f cat-cam    # tail logs
 docker compose restart cat-cam    # restart just the detector
@@ -171,23 +157,39 @@ docker compose up -d --build      # rebuild after a code change
 Both services use `restart: unless-stopped`, so they come back after a
 reboot or crash on their own.
 
-Code changes need a rebuild (`--build`) — the source is baked into the
-image, not mounted. Config and snapshot changes don't: those are bind
-mounts, and detection settings edited in the Web UI apply live.
+Code changes need a rebuild — source and the frontend bundle are baked
+into the image. Runtime settings never do: they live in the volume and
+apply live.
 
-To run bare-metal instead (e.g. for debugging with a debugger attached):
+## Data
+
+Runtime settings and snapshots live in the `cat-cam-data` named volume,
+not in the repo. Snapshots are named `cat_<date>_<time>_c<confidence>.jpg`
+(with a trailing `n` for night-mode hits), so the gallery can show what
+triggered each one without a database to keep in sync.
 
 ```bash
+docker compose exec cat-cam ls /data/snapshots     # look around
+docker compose cp cat-cam:/data/snapshots ./out    # pull them out
+docker compose exec cat-cam cat /data/settings.json
+```
+
+Snapshots are deleted automatically after the retention window set in the
+Config view.
+
+## Development
+
+The backend and frontend can run separately with hot reload:
+
+```bash
+# backend (needs the camera free, so stop the container first)
 uv venv --python 3.12 .venv
 uv pip install -e .
 uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-.venv/bin/python -m cat_cam.main --config config.yaml
+CATCAM_DATA_DIR=./devdata .venv/bin/uvicorn cat_cam.app:app --port 8090 --reload
+
+# frontend, proxying API calls to the backend above
+cd frontend && npm install && npm run dev   # http://localhost:5173
 ```
 
-That path reads `config.local.yaml` directly with no env overrides, so it
-talks to ntfy over the Netbird IP and binds the Web UI to `127.0.0.1`.
-
-## Snapshots
-
-Saved to `snapshots/` with the detection box drawn on, named by timestamp.
-Auto-deleted after `snapshot.retention_days` (default 14).
+`npm run build` type-checks with `svelte-check` before bundling.

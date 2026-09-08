@@ -31,18 +31,20 @@ services:
     group_add:
       - "${VIDEO_GID}"
     user: "1000:1000"
-    environment:
-      # Bind all interfaces *inside* the container; the published port
-      # below is what actually keeps the feed on localhost.
-      CATCAM_WEB_HOST: 0.0.0.0
-      # Reach ntfy over the compose network, so this container never needs
-      # to know the Netbird IP at all.
-      CATCAM_NTFY_SERVER: http://ntfy
+    env_file:
+      # Supplies the CATCAM_* application settings.
+      - .env
     ports:
       - "127.0.0.1:8090:8090"
     volumes:
-      # Read-write: the web UI writes live config changes back to this file.
-      - ./config.yaml:/app/config.yaml
-      - ./config.local.yaml:/app/config.local.yaml:ro
-      - ./snapshots:/app/snapshots
+      # Runtime settings + snapshots. Unbound named volume: the app owns
+      # this state entirely, and nothing tunable lives in the repo.
+      - cat-cam-data:/data
+    # Headroom over Docker's 10s default: streaming responses have to wind
+    # down before the process can exit, and being SIGKILLed instead would
+    # cut off an in-flight snapshot write.
+    stop_grace_period: 30s
     restart: unless-stopped
+
+volumes:
+  cat-cam-data:

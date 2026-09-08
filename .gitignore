@@ -2,12 +2,11 @@
 __pycache__/
 *.pyc
 *.pt
-snapshots/*.jpg
-!snapshots/.gitkeep
 ntfy-server/cache/
 cat_cam.egg-info/
 
-# Local secrets: app-level (ntfy topic) and compose-level (Netbird IP,
-# device paths). Templates are tracked as *.example instead.
-config.local.yaml
+# Deploy secrets: Netbird IP, ntfy topic, device paths.
+# Template is tracked as .env.example instead.
 .env
+frontend/node_modules/
+frontend/dist/

@@ -6,26 +6,27 @@ from typing import Optional
 import cv2
 import numpy as np
 
-from .config import CameraConfig
-
 log = logging.getLogger(__name__)
+
+Crop = tuple[int, int, int, int]
 
 
 class Camera:
     """Thin wrapper around a v4l2 video device (e.g. the DroidCam
     virtual camera), with automatic reconnect if the stream drops."""
 
-    def __init__(self, config: CameraConfig):
-        self._config = config
+    def __init__(self, device: str, crop: Optional[Crop] = None):
+        self._device = device
+        self._crop = crop
         self._cap: Optional[cv2.VideoCapture] = None
 
     def _open(self) -> bool:
-        cap = cv2.VideoCapture(self._config.device, cv2.CAP_V4L2)
+        cap = cv2.VideoCapture(self._device, cv2.CAP_V4L2)
         if not cap.isOpened():
             cap.release()
             return False
         self._cap = cap
-        log.info("Opened camera device %s", self._config.device)
+        log.info("Opened camera device %s", self._device)
         return True
 
     def read(self) -> Optional[np.ndarray]:
@@ -35,13 +36,13 @@ class Camera:
         assert self._cap is not None
         ok, frame = self._cap.read()
         if not ok or frame is None:
-            log.warning("Failed to read frame from %s, reconnecting", self._config.device)
+            log.warning("Failed to read frame from %s, reconnecting", self._device)
             self._cap.release()
             self._cap = None
             return None
 
-        if self._config.crop is not None:
-            x, y, w, h = self._config.crop
+        if self._crop is not None:
+            x, y, w, h = self._crop
             frame = frame[y : y + h, x : x + w]
 
         return frame

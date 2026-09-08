@@ -9,12 +9,15 @@ __pycache__/
 # Model weights are downloaded during the build, not copied in.
 *.pt
 
-# Runtime data: bind-mounted at run time, never baked into the image.
+# Frontend build artifacts: the image builds these itself.
+frontend/node_modules/
+frontend/dist/
+
+# Runtime data lives in the named volume, never in the image.
 snapshots/
 ntfy-server/
 
-# Local secrets / environment -- mounted or injected at run time.
-config.local.yaml
+# Local secrets / environment -- injected at run time.
 .env
 
 README.md

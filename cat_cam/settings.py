@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # resolved against the data volume and fetched on first use; see
     # `model_file`. A path with a separator in it is taken as-is, which is
     # how a custom-trained checkpoint gets bind-mounted in.
-    yolo_model: str = "yolo26n.pt"
+    yolo_model: str = "yolo26s.pt"
     class_name: str = "cat"
 
     # Notification target. Whether to send is a runtime setting; where to

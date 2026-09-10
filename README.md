@@ -88,9 +88,17 @@ detection interval:
 
 | Model | Inference | Use when |
 | --- | --- | --- |
-| `yolo26n.pt` (default) | ~43 ms | Starting point |
-| `yolo26s.pt` | ~75 ms | Distant or low-contrast cat, visually busy background |
+| `yolo26n.pt` | ~43 ms | The cat fills much of the detection zone |
+| `yolo26s.pt` (default) | ~75 ms | Starting point |
 | `yolo26m.pt` | ~188 ms | Still missing detections on `yolo26s` |
+
+The default is `yolo26s`, not the faster nano, because nano turns out to be
+fragile on a realistic outdoor scene rather than merely less accurate. On a
+frame with a cat sitting a few metres from the window, nano scored 0.41
+with a loose detection zone and produced **no box at all** once the zone
+was tightened — the same frame `yolo26s` holds between 0.71 and 0.89 on,
+whatever the zone. A detector whose answer depends that sharply on where
+you drag the zone is not worth the 32 ms.
 
 **If a cat that is plainly in frame produces no notification, change the
 model before touching the confidence thresholds.** The threshold filters

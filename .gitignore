@@ -8,5 +8,16 @@ cat_cam.egg-info/
 # Deploy secrets: Netbird IP, ntfy topic, device paths.
 # Template is tracked as .env.example instead.
 .env
+.env.*
+!.env.example
+
 frontend/node_modules/
 frontend/dist/
+
+# Runtime data directories. Normally these live in the Docker volume, but
+# a bare-metal run (CATCAM_DATA_DIR=./devdata, as in the README) writes
+# them into the working tree -- and they contain snapshots, i.e. photos of
+# your home. Anchored to the repo root so they can't shadow source dirs.
+/devdata/
+/data/
+/snapshots/

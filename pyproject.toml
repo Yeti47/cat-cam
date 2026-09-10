@@ -7,7 +7,9 @@ dependencies = [
     # headless: this app never opens a window, and the GUI build would drag
     # libGL/libglib into the container image for nothing.
     "opencv-python-headless>=4.9",
-    "ultralytics>=8.3",
+    # 8.4.135 is the oldest release verified to know the yolo26 asset
+    # names; an older one fails to resolve the default model.
+    "ultralytics>=8.4.135",
     "requests>=2.31",
     "fastapi>=0.115",
     "uvicorn>=0.32",

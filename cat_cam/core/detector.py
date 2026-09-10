@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 import cv2
@@ -23,8 +24,11 @@ class Detection:
 
 
 class CatDetector:
-    def __init__(self, model: str, class_name: str):
-        self._model = YOLO(model)
+    def __init__(self, model: Path, class_name: str):
+        # Ultralytics fetches a known asset name into this exact path on
+        # first use, creating the directory, and reuses it thereafter.
+        log.info("Loading model %s", model)
+        self._model = YOLO(str(model))
         self._class_id = self._resolve_class_id(class_name)
         self._clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
 

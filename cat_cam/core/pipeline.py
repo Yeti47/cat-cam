@@ -45,7 +45,7 @@ class Pipeline:
         self.state = state
 
         self.camera = Camera(settings.camera_device, settings.camera_crop)
-        self.detector = CatDetector(settings.yolo_model, settings.class_name)
+        self.detector = CatDetector(settings.model_file, settings.class_name)
         self.notifier = Notifier(settings.ntfy_server, settings.ntfy_topic)
         self.snapshots = SnapshotStore(settings.snapshot_dir)
 

@@ -38,8 +38,11 @@ RUN mkdir -p cat_cam && touch cat_cam/__init__.py README.md \
 # which fails for a container user without a home directory.
 ENV YOLO_CONFIG_DIR=/app/.ultralytics
 
-# Bake the weights in at build time so startup needs no network.
-RUN python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')"
+# Weights are deliberately NOT baked in. The detector loads them from
+# /data/models, so ultralytics fetches the configured model there on first
+# use and reuses it forever after. That keeps every model ultralytics
+# publishes selectable with a restart instead of a rebuild, and keeps the
+# image from carrying weights most deployments won't run.
 
 COPY cat_cam ./cat_cam
 COPY --from=frontend /build/dist ./static

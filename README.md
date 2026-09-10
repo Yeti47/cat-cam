@@ -47,7 +47,7 @@ proxy rules for the MJPEG stream or SSE endpoints.
 
 | Tier | Source | Changes at runtime? | What |
 | --- | --- | --- | --- |
-| Deploy | `.env` → `CATCAM_*` env vars | No, restart required | Camera device and crop, ntfy server/topic, model, data dir, log level |
+| Deploy | `.env` → `CATCAM_*` env vars | No, restart required | Camera device and crop, ntfy server/topic, [model](#choosing-a-model), data dir, log level |
 | Runtime | Web UI → `settings.json` in the data volume | Yes, applied live | Confidence thresholds, night brightness threshold, interval, consecutive frames, absence reset, detection zone, snapshot toggle/retention, notification mute |
 
 The split is *where to send / what hardware* versus *how to detect*.
@@ -70,10 +70,38 @@ publishes on, camera device, the host's `video` group id) and the
 `CATCAM_*` application settings. It's gitignored; `.env.example` is the
 tracked template.
 
-The first build is slow and lands at roughly 2 GB: it installs CPU-only
-torch (no multi-GB CUDA wheels — inference here is plain CPU, which is
-plenty for one frame per second) and bakes the YOLOv8n weights into the
-image so startup needs no network.
+The first build is slow and lands at roughly 2 GB, almost entirely
+CPU-only torch (no multi-GB CUDA wheels — inference here is plain CPU,
+which is plenty for one frame per second).
+
+### Choosing a model
+
+Weights are not baked into the image. `CATCAM_YOLO_MODEL` names any asset
+ultralytics publishes; it is fetched into `/data/models` on first start and
+reused from there, so **changing model is a restart, not a rebuild**, and a
+recreated container re-downloads nothing. A value containing `/` is treated
+as a path instead, for a custom-trained checkpoint you bind-mount in.
+
+Pick by scene, not by hardware — measured on a 12-thread CPU over
+zone-cropped frames, even the largest is a fraction of the one-second
+detection interval:
+
+| Model | Inference | Use when |
+| --- | --- | --- |
+| `yolo26n.pt` (default) | ~43 ms | Starting point |
+| `yolo26s.pt` | ~75 ms | Distant or low-contrast cat, visually busy background |
+| `yolo26m.pt` | ~188 ms | Still missing detections on `yolo26s` |
+
+**If a cat that is plainly in frame produces no notification, change the
+model before touching the confidence thresholds.** The threshold filters
+boxes the model proposes; it cannot conjure one. A model too small for the
+scene proposes no cat box at all, so lowering the threshold buys only false
+positives from whatever else is in shot — watch for that signature in the
+Snapshots gallery: hits at implausible confidences with no cat in them.
+
+The trade-off for not baking weights is that a model's *first* start needs
+network. It's one fetch ever per model, and `restart: unless-stopped`
+covers a boot that comes up before the network does.
 
 ### Three things that look wrong but aren't
 
@@ -164,8 +192,8 @@ apply live.
 
 ## Data
 
-Runtime settings and snapshots live in the `cat-cam-data` named volume,
-not in the repo. Snapshots are named `cat_<date>_<time>_c<confidence>.jpg`
+Runtime settings, snapshots and downloaded model weights live in the
+`cat-cam-data` named volume, not in the repo. Snapshots are named `cat_<date>_<time>_c<confidence>.jpg`
 (with a trailing `n` for night-mode hits), so the gallery can show what
 triggered each one without a database to keep in sync.
 

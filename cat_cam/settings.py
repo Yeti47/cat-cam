@@ -27,8 +27,11 @@ class Settings(BaseSettings):
     # Accepts "0,60,1280,600" or a JSON list.
     camera_crop: Optional[tuple[int, int, int, int]] = None
 
-    # Model
-    yolo_model: str = "yolov8n.pt"
+    # Model. A bare asset name (yolo26n.pt, yolov8s.pt, yolo11m.pt, ...) is
+    # resolved against the data volume and fetched on first use; see
+    # `model_file`. A path with a separator in it is taken as-is, which is
+    # how a custom-trained checkpoint gets bind-mounted in.
+    yolo_model: str = "yolo26n.pt"
     class_name: str = "cat"
 
     # Notification target. Whether to send is a runtime setting; where to
@@ -61,6 +64,22 @@ class Settings(BaseSettings):
     @property
     def settings_file(self) -> Path:
         return self.data_dir / "settings.json"
+
+    @property
+    def model_file(self) -> Path:
+        """Absolute path the detector should load weights from.
+
+        Weights are not baked into the image. Handing ultralytics an
+        absolute path under the data volume makes it download there on
+        first use -- creating the directory itself -- and reuse the file
+        forever after, so switching models is a restart rather than a
+        rebuild and nothing is re-fetched when the container is recreated.
+        The cost is that a model's *first* start needs network; the
+        container's restart policy covers a boot that beats the network up.
+        """
+        if "/" in self.yolo_model:
+            return Path(self.yolo_model)
+        return self.data_dir / "models" / self.yolo_model
 
     @property
     def snapshot_dir(self) -> Path:

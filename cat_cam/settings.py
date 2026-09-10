@@ -21,9 +21,10 @@ class Settings(BaseSettings):
     # Camera
     camera_device: str = "/dev/video1"
     # Static (x, y, w, h) pixel crop applied to every frame before anything
-    # else sees it -- for trimming letterbox bars off a portrait phone
-    # stream. Distinct from the detection zone, which only limits where the
-    # model looks. Accepts "0,60,1280,600" or a JSON list.
+    # else sees it -- e.g. to trim letterbox bars when the source's aspect
+    # ratio doesn't match the capture resolution. Distinct from the
+    # detection zone, which only limits where the model looks.
+    # Accepts "0,60,1280,600" or a JSON list.
     camera_crop: Optional[tuple[int, int, int, int]] = None
 
     # Model

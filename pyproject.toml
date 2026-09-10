@@ -1,7 +1,7 @@
 [project]
 name = "cat-cam"
 version = "0.1.0"
-description = "Detect a cat waiting at the glass door via DroidCam and send a notification"
+description = "Detect a cat at the door from any v4l2 camera and send a notification"
 requires-python = ">=3.10,<3.13"
 dependencies = [
     # headless: this app never opens a window, and the GUI build would drag

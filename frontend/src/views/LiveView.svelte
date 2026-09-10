@@ -93,7 +93,7 @@
     line-height: 0;
     max-width: 100%;
     /* Shrink to fit rather than overflow when the window is short --
-       matters for a portrait phone stream. */
+       matters most for a tall (portrait) source. */
     min-height: 0;
     flex: 0 1 auto;
   }

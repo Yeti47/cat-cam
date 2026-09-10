@@ -1,12 +1,13 @@
 # cat-cam
 
-Watches the DroidCam virtual camera feed pointed at the glass door and sends a
-notification when a cat is detected outside, day or night.
+Watches a camera pointed at the door and sends a notification when a cat is
+detected outside, day or night.
 
 ## How it works
 
-- Captures frames from a v4l2 device (`/dev/video1` by default — DroidCam's
-  virtual camera) via OpenCV.
+- Captures frames from any v4l2 device (`/dev/video*`) via OpenCV — a USB
+  webcam, a CSI camera, or a virtual device fed by an IP-camera bridge or a
+  phone streaming app. Set the device with `CATCAM_CAMERA_DEVICE`.
 - Runs YOLOv8n (via `ultralytics`), filtered to the `cat` class, on CPU.
 - If the frame is dark, it automatically switches to "night mode": applies
   CLAHE contrast enhancement and lowers the confidence threshold, so a cat

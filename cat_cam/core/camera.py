@@ -12,8 +12,13 @@ Crop = tuple[int, int, int, int]
 
 
 class Camera:
-    """Thin wrapper around a v4l2 video device (e.g. the DroidCam
-    virtual camera), with automatic reconnect if the stream drops."""
+    """Thin wrapper around a v4l2 video device, with automatic reconnect
+    if the stream drops.
+
+    Any `/dev/video*` source works: a USB webcam, a CSI camera, or a
+    virtual device fed by something else (an IP camera bridge, a phone
+    streaming app). Reconnect matters most for virtual devices, whose
+    feed can disappear without the node going away."""
 
     def __init__(self, device: str, crop: Optional[Crop] = None):
         self._device = device
